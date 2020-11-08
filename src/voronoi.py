@@ -1,7 +1,5 @@
 from heapq import heappop, heappush
 
-from typing import List, Any
-
 from src.voronoi_elements.point import Point
 from src.voronoi_elements.edge import Edge
 from src.voronoi_elements.event import Event
@@ -9,109 +7,49 @@ from src.voronoi_elements.arc import Arc
 
 
 class Voronoi:
-  def __init__(self, height: int = 400, width: int = 400) -> None:
-    self.__height: int = height
-    self.__width: int = width
+  def __init__(self, width=800, height=400):
+    self.width = width
+    self.height = height
 
-    self.__pq: list = []
-    self.__edges: List[Edge] = []
-    self.__tree = None
-    self.__firstPoint = None
-    self.__stillOnFirstRow: bool = True
-    self.__points: List[Point] = []  # List to hold the Voronoi Point objects
-    self.__sweepPt = None
+  def process(self, points):
+    """Process given points, represented as tuple (x,y) to return edge collection."""
+    self.pq = []
+    self.edges = []
+    self.tree = None
+    self.firstPoint = None  # handle tie breakers with first
+    self.stillOnFirstRow = True
+    self.points = []
 
-  @property
-  def height(self) -> int:
-    return self.__height
-
-  @height.setter
-  def height(self, h: int) -> None:
-    self.__height = h
-
-  @property
-  def width(self) -> int:
-    return self.__width
-
-  @width.setter
-  def width(self, w: int) -> None:
-    self.__width = w
-
-  @property
-  def pq(self) -> list:
-    return self.__pq
-
-  @pq.setter
-  def pq(self, pq) -> None:
-    self.__pq = pq
-
-  @property
-  def tree(self):
-    return self.__tree
-
-  @tree.setter
-  def tree(self, t) -> None:
-    self.__tree = t
-
-  @property
-  def edges(self) -> List[Edge]:
-    return self.__edges
-
-  @edges.setter
-  def edges(self, e) ->  None:
-    self.__edges = e
-
-  @property
-  def firstPoint(self):
-    return self.__firstPoint
-
-  @firstPoint.setter
-  def firstPoint(self, pt) -> None:
-    self.__firstPoint = pt
-
-  @property
-  def stillOnFirstRow(self) -> bool:
-    return self.__stillOnFirstRow
-
-  @stillOnFirstRow.setter
-  def stillOnFirstRow(self, is_on_first_row) -> None:
-    self.__stillOnFirstRow = is_on_first_row
-
-  @property
-  def sweepPt(self):
-    return self.__sweepPt
-
-  @sweepPt.setter
-  def sweepPt(self, s) -> None:
-    self.__sweepPt = s
-
-  def generate(self, points) -> None:
-    # points => List of (x, y) tuples
-    for idx, pt in enumerate(points):
-      point = Point(pt, idx)
-      self.__points.append(point)
-      event = Event(Point(pt), site=pt)
+    # Each point has unique identifier
+    for idx in range(len(points)):
+      pt = Point(points[idx], idx)
+      self.points.append(pt)
+      event = Event(pt, site=pt)
       heappush(self.pq, event)
 
     while self.pq:
       event = heappop(self.pq)
-      if not event.deleted:
-        self.sweepPt = event.pt
-        # If multiple points are in the first row
-        if self.stillOnFirstRow and self.firstPoint:
-          if self.sweepPt.y != self.firstPoint.y:
-            self.stillOnFirstRow = False
+      if event.deleted:
+        continue
 
-        if event.site:
-          self.processSite(event)
-        else:
-          self.processCircle(event)
+      self.sweepPt = event.p
 
+      # Special case if multiple points are all on first row.
+      if self.stillOnFirstRow and self.firstPoint:
+        if self.sweepPt.y != self.firstPoint.y:
+          self.stillOnFirstRow = False
+
+      if event.site:
+        self.processSite(event)
+      else:
+        self.processCircle(event)
+
+        # complete edges that remain and stretch to infinity
     if self.tree and not self.tree.isLeaf:
       self.finishEdges(self.tree)
 
       # Complete Voronoi Edges with partners.
-      for e in self.__edges:
+      for e in self.edges:
         if e.partner:
           if e.b is None:
             e.start.y = self.height
@@ -119,18 +57,43 @@ class Voronoi:
             e.start = e.partner.end
 
   def findArc(self, x):
-    n = self.__tree
+    """
+    Find correct arc leaf node in BeachLine for this x coordinate. Don't have to
+    check each parabola, only 2*log(n) of them.
+    """
+    n = self.tree
     while not n.isLeaf:
-      # Compute breakpoint based on sweep line
-      line_x = self.computeBreakPoint(n)
-      # If tie, can choose either one
+      line_x = self.computeBreakPoint(n)  # compute breakpoint based on sweep line
+
+      # if tie, can choose either one.
       if line_x > x:
         n = n.left
       else:
         n = n.right
+
     return n
 
   def computeBreakPoint(self, n):
+    """
+    With sweep line Y coordinate and left/right children of interior node. You want
+    to find the x-coordinate of the breakpoint, which changes based upon the y-value
+    of the sweep line. Must compute intersection of two parabolas.
+
+    Parabola can be computed as 4p(y-k)=(x-h)^2 where (h,k) is the site point, which
+    becomes the focal point for the parabola. p is the distance to the directrix
+    (aka, the sweep line) from the site's point (site.y - sweepPt.y)
+
+    y1 = (1/4p1)x^2 + (-h1/2p1)x + (h1^2/4p1+k1) and compute for (h2,k2,p2)
+
+    Only subtlety is that to simplify equation, normalize y-coordinates so
+    k1 = p1/4 and k2 = p2/4; seems to eliminate most errors.
+
+    Now set to each other and subtract to get:
+
+    0 = (1/4p1 - 1/4p2)x^2 + (-h1/2p1 + h2/2p2) + (h1^2/4p1+k1) - (h2^2/4p2+k2)
+
+    Compute for x using quadratic formula: (-b +/- sqrt(b^2-4ac))/2a
+    """
     left = n.getLargestLeftDescendant()
     right = n.getSmallestRightDescendant()
 
@@ -179,58 +142,59 @@ class Voronoi:
       return max(x1, x2)
     return min(x1, x2)
 
-  def processSite(self, event: Event) -> None:
-    # Process a point site
+  def processSite(self, event):
+    """Process a site event from the queue."""
+
     if self.tree is None:
-      self.tree = Arc(event.pt)
-      self.firstPoint = event.pt
+      self.tree = Arc(event.p)
+      self.firstPoint = event.p
       return
 
     # must handle special case when two points are at top-most y coordinate, in
     # which case the root is a leaf node. Note that when sorting events, ties
     # are broken by x coordinate, so the next point must be to the right
-    if self.tree.isLeaf and event.pt.y == self.tree.site.y:
+    if self.tree.isLeaf and event.y == self.tree.site.y:
       left = self.tree
-      right = Arc(event.pt)
+      right = Arc(event.p)
 
-      start = Point(((self.firstPoint.x + event.pt.x) / 2, self.height))
-      edge = Edge(start, self.firstPoint, event.pt)
+      start = Point(((self.firstPoint.x + event.p.x) / 2, self.height))
+      edge = Edge(start, self.firstPoint, event.p)
 
       self.tree = Arc(edge=edge)
-      self.tree.left = left
-      self.tree.right = right
+      self.tree.setLeft(left)
+      self.tree.setRight(right)
 
-      self.__edges.append(edge)
+      self.edges.append(edge)
       return
 
     # find point on parabola where event.pt.x bisects with vertical line,
-    leaf = self.findArc(event.pt.x)
+    leaf = self.findArc(event.p.x)
 
     # Special case where there are multiple points, all horizontal with first point
     # so keep expanding to the right
     if self.stillOnFirstRow:
       leaf.setLeft(Arc(leaf.site))
-      start = Point(((leaf.site.x + event.pt.x) / 2, self.height))
+      start = Point(((leaf.site.x + event.p.x) / 2, self.height))
 
-      leaf.edge = Edge(start, leaf.site, event.pt)
+      leaf.edge = Edge(start, leaf.site, event.p)
       leaf.isLeaf = False
-      leaf.setRight(Arc(event.pt))
+      leaf.setRight(Arc(event.p))
 
-      self.__edges.append(leaf.edge)
+      self.edges.append(leaf.edge)
       return
 
     # If leaf had a circle event, it is no longer valid
     # since it is being split
-    if leaf.circle_event:
-      leaf.circle_event.deleted = True
+    if leaf.circleEvent:
+      leaf.circleEvent.deleted = True
 
     # Voronoi edges discovered between two sites. Leaf.site is higher
     # giving orientation to these edges.
-    start = leaf.pointOnBisectionLine(event.pt.x, self.sweepPt.y)
-    neg_ray = Edge(start, leaf.site, event.pt)
-    pos_ray = Edge(start, event.pt, leaf.site)
+    start = leaf.pointOnBisectionLine(event.p.x, self.sweepPt.y)
+    neg_ray = Edge(start, leaf.site, event.p)
+    pos_ray = Edge(start, event.p, leaf.site)
     neg_ray.partner = pos_ray
-    self.__edges.append(neg_ray)
+    self.edges.append(neg_ray)
 
     # old leaf becomes root of two nodes, and grandparent of two
     leaf.edge = pos_ray
@@ -238,73 +202,14 @@ class Voronoi:
 
     left = Arc()
     left.edge = neg_ray
-    left.left = Arc(leaf.site)
-    left.right = Arc(event.pt)
+    left.setLeft(Arc(leaf.site))
+    left.setRight(Arc(event.p))
 
-    leaf.left = left
-    leaf.right = Arc(leaf.site)
+    leaf.setLeft(left)
+    leaf.setRight(Arc(leaf.site))
 
     self.generateCircleEvent(left.left)
     self.generateCircleEvent(leaf.right)
-
-  def processCircle(self, event: Event) -> None:
-    # Process a circle event
-    node = event.node
-
-    # Find neighbor on the left and right.
-    left_a = node.getLeftAncestor()
-    left = left_a.getLargestLeftDescendant()
-    right_a = node.getRightAncestor()
-    right = right_a.getSmallestRightDescendant()
-
-    # Eliminate old circle events if they exist.
-    if left.circleEvent:
-      left.circleEvent.deleted = True
-    if right.circleEvent:
-      right.circleEvent.deleted = True
-
-    # Circle defined by left - node - right. Terminate Voronoi rays
-    p = node.pointOnBisectionLine(event.pt.x, self.sweepPt.y)
-
-    # this is a real Voronoi point! Add to appropriate polygons
-    if left.site.polygon.last == node.site.polygon.first:
-      node.site.polygon.addToRear(p)
-    else:
-      node.site.polygon.addToFront(p)
-
-    left.site.polygon.addToFront(p)
-    right.site.polygon.addToRear(p)
-
-    # Found Voronoi vertex. Update edges appropriately
-    left_a.edge.end = p
-    right_a.edge.end = p
-
-    # Find where to record new voronoi edge. Place with
-    # (left) or (right), depending on which of left_a/right_a is higher
-    # in the beachline tree. Without loss of generality, assume left_a is higher.
-    # Reason is because node is being deleted and the highest ancestor (left_a) is
-    # interior node that represents breakpoint involving node, and this interior
-    # node must now represent the breakpoint [left|right]. Since left_a is higher,
-    # it will remain while right_a is being removed (effectively replaced by right).
-    t = node
-    ancestor = None
-    while t != self.tree:
-      t = t.parent
-      if t == left_a:
-        ancestor = left_a
-      elif t == right_a:
-        ancestor = right_a
-
-    ancestor.edge = Edge(p, left.site, right.site)
-    self.__edges.append(ancestor.edge)
-
-    # eliminate middle arc (leaf node) from beach line tree
-    node.remove()
-
-    # May find new neighbors after deletion so must check
-    # for circles as well...
-    self.generateCircleEvent(left)
-    self.generateCircleEvent(right)
 
   def finishEdges(self, n):
     """
@@ -312,7 +217,7 @@ class Voronoi:
     """
     n.edge.finish(self.width, self.height)
     n.edge.left.polygon.addToFront(n.edge.end)
-    n.edge.right.polygon.addToRear(n.edge.end)
+    n.edge.right.polygon.addToEnd(n.edge.end)
 
     if not n.left.isLeaf:
       self.finishEdges(n.left)
@@ -349,9 +254,68 @@ class Voronoi:
 
     # make sure choose point at bottom of circumcircle
     circle_event = Event(Point((p.x, p.y - radius)))
-    if circle_event.pt.y >= self.sweepPt.y:
+    if circle_event.p.y >= self.sweepPt.y:
       return
 
     node.circleEvent = circle_event
     circle_event.node = node
     heappush(self.pq, circle_event)
+
+  def processCircle(self, event):
+    """Process circle event."""
+    node = event.node
+
+    # Find neighbor on the left and right.
+    left_a = node.getLeftAncestor()
+    left = left_a.getLargestLeftDescendant()
+    right_a = node.getRightAncestor()
+    right = right_a.getSmallestRightDescendant()
+
+    # Eliminate old circle events if they exist.
+    if left.circleEvent:
+      left.circleEvent.deleted = True
+    if right.circleEvent:
+      right.circleEvent.deleted = True
+
+    # Circle defined by left - node - right. Terminate Voronoi rays
+    p = node.pointOnBisectionLine(event.p.x, self.sweepPt.y)
+
+    # this is a real Voronoi point! Add to appropriate polygons
+    if left.site.polygon.last == node.site.polygon.first:
+      node.site.polygon.addToEnd(p)
+    else:
+      node.site.polygon.addToFront(p)
+
+    left.site.polygon.addToFront(p)
+    right.site.polygon.addToEnd(p)
+
+    # Found Voronoi vertex. Update edges appropriately
+    left_a.edge.end = p
+    right_a.edge.end = p
+
+    # Find where to record new voronoi edge. Place with
+    # (left) or (right), depending on which of left_a/right_a is higher
+    # in the beach-line tree. Without loss of generality, assume left_a is higher.
+    # Reason is because node is being deleted and the highest ancestor (left_a) is
+    # interior node that represents breakpoint involving node, and this interior
+    # node must now represent the breakpoint [left|right]. Since left_a is higher,
+    # it will remain while right_a is being removed (effectively replaced by right).
+    t = node
+    ancestor = None
+    while t != self.tree:
+      t = t.parent
+      if t == left_a:
+        ancestor = left_a
+      elif t == right_a:
+        ancestor = right_a
+
+    ancestor.edge = Edge(p, left.site, right.site)
+    self.edges.append(ancestor.edge)
+
+    # eliminate middle arc (leaf node) from beach line tree
+    node.remove()
+
+    # May find new neighbors after deletion so must check
+    # for circles as well...
+    self.generateCircleEvent(left)
+    self.generateCircleEvent(right)

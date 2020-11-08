@@ -1,5 +1,5 @@
 from heapq import heappop, heappush
-from adk.region import maxValue, X, Y
+from src.voronoi_elements.constants import maxValue, X, Y
 
 
 # Still occasional errors as size of P increases when running live application.
@@ -237,7 +237,8 @@ class Point:
     self.idx = idx
 
   def __eq__(self, other):
-    if other is None: return False
+    if other is None:
+      return False
     return self.x == other.x and self.y == other.y
 
   def __ne__(self, other):
@@ -662,3 +663,31 @@ class Voronoi:
     # for circles as well...
     self.generateCircleEvent(left)
     self.generateCircleEvent(right)
+
+from matplotlib import pyplot as plt
+
+if __name__ == "__main__":
+  voronoi = Voronoi(20, 20)
+  points = [(10, 15), (6, 18), (9, 14), (18, 3), (5, 8)]
+  voronoi.process(points=points)
+
+  fig = plt.figure()
+  ax = fig.add_subplot(111)
+  for pt in points:
+    ax.plot(pt[0], pt[1], c='k', marker='o')
+
+  for pt in voronoi.points:
+    print(str(pt.polygon))
+    polygon_vertices = pt.polygon.points
+    n = len(polygon_vertices)
+    for i in range(n):
+      x = [polygon_vertices[i].x, polygon_vertices[(i + 1) % n].x]
+      y = [polygon_vertices[i].y, polygon_vertices[(i + 1) % n].y]
+      # print(x, y)
+      ax.plot(x, y, c='b')
+
+  ax.set_xlim([0, 20])
+  ax.set_ylim([0, 20])
+
+  plt.draw()
+  plt.show()

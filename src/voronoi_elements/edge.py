@@ -3,31 +3,45 @@ from src.voronoi_elements.constants import maxValue
 
 
 class Edge:
-  # Edge of a Voronoi Polygon
-  def __init__(self, p: Point, left: Point, right: Point):
-    self.left: Point = left
-    self.right: Point = right
+  """
+  Represents edge not yet placed, initially a true Half Edge formed as infinite ray.
+
+  Edge has orientation based on the relative location of left and right points, which
+  is used when detecting intersections. This is a subtle but critical part of the
+  algorithm.
+  """
+
+  def __init__(self, p, left, right):
+
+    self.left = left
+    self.right = right
     self.partner = None
     self.end = None
 
-    self.right_y_first = right.y > left.y
-    self.right_x_first = right.x > left.x
+    # record orientation from sweep point of view (first means seen first by sweep).
+    self.rightYFirst = right.y > left.y
+    self.rightXFirst = right.x < left.x
 
+    # remember orientation of edge
     if left.y == right.y:
+      # vertical line is handled specially by declaring no y-intercept
       self.m = maxValue
       self.b = None
       self.x = (right.x + left.x) / 2
       self.start = Point((p.x, p.y))
     else:
-      self.m = (right.x - left.x) / (right.y - left.y)
+      # Compute line characteristics.
+      self.m = (right.x - left.x) / (left.y - right.y)
       self.b = p.y - self.m * p.x
       self.x = None
       self.start = Point((p.x, p.y))
 
   def finish(self, width, height):
-    # Close half edge, if self.end does not exist, assuming bounding box.
-    # Might extend point in both directions. Crop to bounding box as needed.
-    if self.right_y_first:
+    """
+    Close half edge, if self.end does not exist, assuming bounding box.
+    Might extend point in both directions. Crop to bounding box as needed.
+    """
+    if self.rightYFirst:
       y = width * self.m + self.b
       if y < 0:
         p = (-self.b / self.m, 0)
@@ -43,7 +57,7 @@ class Edge:
     self.end = Point(p)
 
   def intersect(self, other):
-    # Return point of intersection between two (half-)edges
+    """Return point of intersection between two (half-)edges."""
     if self.b is None:
       if other.b is None:
         if self.x == other.x:
@@ -71,10 +85,10 @@ class Edge:
     other_x_first = other.start.x < p.x
     other_y_first = other.start.y < p.y
 
-    c1 = not (self_x_first == self.right_y_first)
-    c2 = not (self_y_first == self.right_x_first)
-    c3 = not (other_x_first == other.right_y_first)
-    c4 = not (other_y_first == other.right_x_first)
+    c1 = not (self_x_first == self.rightYFirst)
+    c2 = not (self_y_first == self.rightXFirst)
+    c3 = not (other_x_first == other.rightYFirst)
+    c4 = not (other_y_first == other.rightXFirst)
     if c1 or c2 or c3 or c4:
       return None
     return p

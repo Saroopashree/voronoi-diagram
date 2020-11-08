@@ -1,47 +1,33 @@
-
 class Point:
-  # Describes any point in a Voronoi Diagram
-  # Can be a site or a point joined by a Voronoi Edge
-  def __init__(self, coord: tuple = (0, 0), idx=None) -> None:
-    self.__x: float = coord[0]
-    self.__y: float = coord[1]
+  """
+  Every point defines center of a Voronoi Polygon. Maintains index for post-processing.
+  Voronoi Polygon is defined here rather than Arc because those objects come and
+  go as the BeachLine is processed.
 
-    self.__idx: int = idx if (idx is not None) else -1
+  To deal with floating point issues, all values are rounded to four digits of precision.
+  This allows test cases to be accurately defined and helps eliminate special cases.
+  """
+
+  def __init__(self, p, idx=None):
+    """ p is a tuple (x,y)."""
+    self.x = round(p[0], 4)
+    self.y = round(p[1], 4)
+
     from src.voronoi_elements.polygon import Polygon
-    self.__polygon: Polygon = Polygon(self)
+    self.polygon = Polygon((self.x, self.y))
+    self.idx = idx
 
-  @property
-  def x(self) -> float:
-    return self.__x
+  def __eq__(self, other):
+    if other is None:
+      return False
+    return self.x == other.x and self.y == other.y
 
-  @x.setter
-  def x(self, x: float) -> None:
-    self.__x = x
+  def __ne__(self, other):
+    if other is None: return False
+    return self.x != other.x or self.y != other.y
 
-  @property
-  def y(self) -> float:
-    return self.__y
-
-  @y.setter
-  def y(self, y: float) -> None:
-    self.__y = y
-
-  @property
-  def polygon(self):
-    return self.__polygon
-
-  @polygon.setter
-  def polygon(self, p):
-    self.__polygon = p
-
-  def __eq__(self, pt) -> bool:
-    return self.__x == pt.x and self.__y == pt.y
-
-  def __ne__(self, pt) -> bool:
-    return self.__x != pt.x or self.__y != pt.y
-
-  def __str__(self) -> str:
-    return "(" + str(self.__x) + "," + str(self.__y) + ")"
+  def __str__(self):
+    return '(' + str(self.x) + ',' + str(self.y) + ')'
 
   def as_tuple(self):
     return tuple([self.x, self.y])

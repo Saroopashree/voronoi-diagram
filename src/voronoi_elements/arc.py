@@ -2,33 +2,45 @@ from src.voronoi_elements.point import Point
 
 
 class Arc:
+  """
+  Every interior node represents breakpoint between neighboring
+  sites. If an interior node has two leaf nodes for children,
+  then the breakpoint is between these two nodes. Otherwise
+  the breakpoint is between the largest descendant in the left-subtree
+  and the smallest descendant in the right-subtree (in other words
+  neighboring nodes on the beachline).
+
+  Construct leaf node with point.
+
+  Every interior node contains references to bisection edge which
+  is initially an infinite half edge but then becomes a full finite
+  edge as the algorithm progresses (or indeed, when finishing edges
+  at the end).
+
+  Discovered potential circle events are stored with the associated
+  Arc node.
+  """
+
   def __init__(self, point=None, edge=None):
     self.parent = None
     self.left = None
     self.right = None
-    self.site = point
     self.edge = edge
+    self.site = point
+    self.isLeaf = False
     if point:
       self.isLeaf = True
-    else:
-      self.isLeaf = False
-    self.circle_event = None
+    self.circleEvent = None
 
-  # @property
-  # def left(self):
-  #   return self.left
-  #
-  # @left.setter
-  # def left(self, l):
-  #   self.left = l
-  #
-  # @property
-  # def right(self):
-  #   return self.right
-  #
-  # @right.setter
-  # def right(self, r):
-  #   self.right = r
+  def __str__(self):
+    left_s = ''
+    if self.left:
+      left_s = str(self.left)
+    right_s = ''
+    if self.right:
+      right_s = str(self.right)
+
+    return '(pt=' + str(self.site) + ', left=' + left_s + ", right=" + right_s + ')'
 
   def pointOnBisectionLine(self, x, sweep_y):
     """
@@ -48,7 +60,18 @@ class Arc:
 
     return Point((x, y))
 
+  def setLeft(self, n):
+    self.left = n
+    n.parent = self
+
+  def setRight(self, n):
+    self.right = n
+    n.parent = self
+
   def getLeftAncestor(self):
+    """
+    Find first ancestor with right link to a parent of self (if exists).
+    """
     parent = self.parent
     n = self
     while parent is not None and parent.left == n:
@@ -58,6 +81,9 @@ class Arc:
     return parent
 
   def getRightAncestor(self):
+    """
+    Find first ancestor with right link to a parent of self (if exists).
+    """
     parent = self.parent
     n = self
     while parent is not None and parent.right == n:
@@ -67,39 +93,31 @@ class Arc:
     return parent
 
   def getLargestLeftDescendant(self):
+    """Find largest value in left sub-tree."""
     n = self.left
     while not n.isLeaf:
       n = n.right
+
     return n
 
   def getSmallestRightDescendant(self):
+    """Find smallest value in right sub-tree."""
     n = self.right
     while not n.isLeaf:
       n = n.left
+
     return n
 
   def remove(self):
+    """Remove leaf node from tree. """
     grand_parent = self.parent.parent
     if self.parent.left == self:
-      # If self is a left child of the parent
       if grand_parent.left == self.parent:
-        # If parent is a left child of the grand parent
-        grand_parent.left = self.parent.right
+        grand_parent.setLeft(self.parent.right)
       else:
-        grand_parent.right = self.parent.right
+        grand_parent.setRight(self.parent.right)
     else:
       if grand_parent.left == self.parent:
-        # If parent is a left child of the grand parent
-        grand_parent.left = self.parent.left
+        grand_parent.setLeft(self.parent.left)
       else:
-        grand_parent.right = self.parent.left
-
-  def __str__(self):
-    left_s = ''
-    if self.left:
-      left_s = str(self.left)
-    right_s = ''
-    if self.right:
-      right_s = str(self.right)
-
-    return '(pt=' + str(self.site) + ', left=' + left_s + ", right=" + right_s + ')'
+        grand_parent.setRight(self.parent.left)

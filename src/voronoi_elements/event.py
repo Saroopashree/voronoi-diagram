@@ -1,56 +1,40 @@
-from src.voronoi_elements.point import Point
-
-
 class Event:
-  def __init__(self, pt: Point, site=None) -> None:
-    self.__pt: Point = pt
-    self.__site = site
-    self.__deleted: bool = False
+  """Event in the queue. If an event is deleted, it still remains in the queue, but is not processed."""
 
-    self.__node = None  # Circle events link back to Arc node
+  def __init__(self, p, site=None):
+    self.p = p
+    self.site = site
+    self.y = p.y
+    self.deleted = False
 
-  @property
-  def pt(self) -> Point:
-    return self.__pt
+    # Circle events link back to Arc node
+    self.node = None
 
-  @property
-  def deleted(self) -> bool:
-    return self.__deleted
+  # built-in methods to support Event being used in priority queue
+  def __lt__(self, other):
+    """Higher Y values are "smaller" for events. Tie breaker is on smaller x value."""
+    if self.y > other.y:
+      return True
+    if self.y < other.y:
+      return False
 
-  @deleted.setter
-  def deleted(self, d) -> None:
-    self.__deleted = d
+    if self.p.x < other.p.x:
+      return True
 
-  @property
-  def site(self):
-    return self.__site
+    return False
 
-  @site.setter
-  def site(self, site) -> None:
-    self.__site = site
+  def __eq__(self, other):
+    return self.p.x == other.p.x and self.p.y == other.p.y
 
-  @property
-  def node(self):
-      return self.__node
+  def __ne__(self, other):
+    return not self.p.x == other.p.x or not self.p.y == other.p.y
 
-  @node.setter
-  def node(self, n) -> None:
-    self.__node = n
+  # These can all be defined in terms of < above
+  def __gt__(self, other):
+    return other < self
 
-  def __eq__(self, event) -> bool:
-    return self.pt.x == event.pt.x and self.pt.y == event.pt.y
+  def __ge__(self, other):
+    return not self < other
 
-  def __ne__(self, event) -> bool:
-    return self.pt.x != event.pt.x or self.pt.y != event.pt.y
-
-  def __lt__(self, event) -> bool:
-    return self.pt.y < event.pt.y if self.pt.y != event.pt.y else self.pt.x < event.pt.x
-
-  def __gt__(self, event) -> bool:
-    return self.pt.y > event.pt.y if self.pt.y != event.pt.y else self.pt.x > event.pt.x
-
-  def __le__(self, event) -> bool:
-    return not self > event
-
-  def __ge__(self, event) -> bool:
-    return not self < event
+  def __le__(self, other):
+    return not other < self
